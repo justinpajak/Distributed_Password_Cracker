@@ -32,10 +32,17 @@ class Worker:
 			sys.exit(1)
 	
 	def connect_to_manager(self):
-		pass
+		# Create socket to connect to manager
+		self.manager_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		self.manager_sock.connect((self.host, self.port))
 
-	# Main worker code
+		# Send manager password for authenticity and say its ready for batches
+		message = json.dumps({"status": "ready", "password": "dogecoin123"})
+		message = len(message).to_bytes(8, "little") + message.encode("ascii")
+		self.manager_sock.sendall(message)
+
 	def run_worker(self):
+		# Parse command line arguments
 		args = sys.argv[1:]
 
 		if len(args) == 0:
@@ -43,9 +50,12 @@ class Worker:
 		if args[0] == "-h":
 			usage(0)
 
+		# Query name server to get host and port
 		project_name = args[0]
 		self.query_ns(project_name)
-		print(self.host, self.port)
+		print(self.host)
+		print(self.port)
+		self.connect_to_manager()
 
 if __name__ == '__main__':
 	worker = Worker()
