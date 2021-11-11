@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+
 import socket, json, requests, sys
 
 class Worker:
@@ -40,6 +41,38 @@ class Worker:
 		message = json.dumps({"status": "ready", "password": "dogecoin123"})
 		message = len(message).to_bytes(8, "little") + message.encode("ascii")
 		self.manager_sock.sendall(message)
+		
+		# Listen to messages from manager about range of passwords to bruteforce
+		self.listen_for_batch()
+
+	def listen_for_batch(self):
+		# Read length of message from manager
+		message_len = self.manager_sock.recv(8)
+		if not message_len:
+			self.manager_sock.close()
+			return
+		message_len = int.from_bytes(message_len, "little")
+
+		# Read message from manager
+		message = ""
+		total_read = 0
+		while True:
+			data = self.manager_sock.recv(512).decode("ascii")
+			total_read += len(data)
+			message += data
+			if total_read == message_len:
+				break
+		
+		# Determine if batch is valid and get cracked dict, start, and end range values
+		message_json = {}
+		try:
+			message_json = json.loads(message)
+			self.cracked = message_json["cracked"]
+			self.start = message_json["start"]
+			self.end = message_json["end"]
+		except:
+			self.manager_sock.close()
+			return	
 
 	def run_worker(self):
 		# Parse command line arguments
