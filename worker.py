@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 
+import socket
+import json
+import requests
+import sys
+import hashlib
+import threading
+import charmap
 
-import socket, json, requests, sys
+SYMBOLS = 91
 
 class Worker:
 
@@ -65,29 +72,75 @@ class Worker:
 		
 		# Determine if batch is valid and get cracked dict, start, and end range values
 		message_json = {}
+		cracked = ""
+		start = 0
+		end = 0
 		try:
 			message_json = json.loads(message)
-			self.cracked = message_json["cracked"]
-			self.start = message_json["start"]
-			self.end = message_json["end"]
+			cracked = message_json["cracked"]
+			start = message_json["start"]
+			end = message_json["end"]
 		except:
 			self.manager_sock.close()
-			return	
+			return
+
+		# Crack the current batch with the given range on the hashes that are not cracked yet
+		self.crack_batch(cracked, start, end)
+	
+	def crack_batch(self, cracked, start, end):
+		# 1.) Compute all potential passwords for given batch
+		# 2.) Iterate over all hashes that are trying to be cracked
+		# 3.) Compare hash with candidate if the hash hasn't been cracked already
+		# 4.) If equals, password has been cracked
+
+		for candidate in self.get_candidates(start, end):
+			cand_hash = hashlib.md5(candidate.encode()).hexdigest()
+			for password_hash in cracked:
+				if not cracked[password_hash] and cand_hash == password_hash:
+					print(f"Password cracked: {candidate}")
+			
+	def get_candidates(self, start_data, end_data):
+		# Get all potential password candidates for the given batch
+		cm = charmap.charmap()
+		length1 = start_data[0]
+		length2 = end_data[0]
+		for l in range(length1, length2 + 1):
+			start = 0
+			end = 0
+			if l == length1:
+				start = start_data[1]
+				end = SYMBOLS ** l
+			elif l == length2:
+				start = 0
+				end = end_data[1]
+			else:
+				start = 0
+				end = SYMBOLS ** l
+			
+			for code in range(start, end):
+				candidate = ['0'] * l
+				i = l
+				while code > 0:
+					candidate[i - 1] = cm.int_to_char[code % 91]
+					code //= 91
+					i -= 1
+				c = "".join(candidate)
+				candidate = "".join(candidate)
+				yield candidate
+
 
 	def run_worker(self):
 		# Parse command line arguments
 		args = sys.argv[1:]
 
 		if len(args) == 0:
-			usage(1)
+			self.usage(1)
 		if args[0] == "-h":
-			usage(0)
+			self.usage(0)
 
 		# Query name server to get host and port
 		project_name = args[0]
 		self.query_ns(project_name)
-		print(self.host)
-		print(self.port)
 		self.connect_to_manager()
 
 if __name__ == '__main__':
