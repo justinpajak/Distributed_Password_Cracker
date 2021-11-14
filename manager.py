@@ -26,7 +26,7 @@ class Manager:
     be tried
     """
     def __init__(self, max_length, batch_size):
-        self.workers = []
+        self.workers = {}
         self.hashes = []
         self.batch_size = batch_size
         self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1,
@@ -64,9 +64,9 @@ class Manager:
         return start, end
 
     def accept_worker(self, conn):
-        w = {"conn": conn, "lastheardfrom": time.time()}
+        self.workers[conn.fileno()] = {"conn": conn, "lastheardfrom": time.time()}
         start, end = self.batch()
-        w["interval"] = (start, end)
+        self.workers[conn.fileno()]["interval"] = (start, end)
         order = {"cracked": {}, "start": [start[0], start[1]], "end": [end[0], end[1]]}
         for h in self.hashes:
             order["cracked"][h] = False
@@ -115,8 +115,8 @@ if __name__ == "__main__":
         r, w, x = select.select(socks, [], [])
         for s in r:
             if s == server:
-                print("Found New Client")
                 conn, addr = s.accept()
+                print("New worker with id {conn.fileno()}")
                 socks.append(conn)
                 m.accept_worker(conn)
             else:
