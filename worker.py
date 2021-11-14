@@ -5,8 +5,8 @@ import json
 import requests
 import sys
 import hashlib
-import threading
 import charmap
+import os
 
 SYMBOLS = 91
 
@@ -15,8 +15,12 @@ class Worker:
 	def __init__(self):
 		self.run_worker()
 
+
 	def usage(self, status):
+		progname = os.path.basename(sys.argv[0])
+		print(f'Usage: ./{progname} manager-project-name')
 		sys.exit(status)
+
 
 	def query_ns(self, project_name):
 		# Make HTTP request to catalog name server and fetch query.json file
@@ -39,66 +43,86 @@ class Worker:
 			sys.stderr.write("Name server query invalid.")
 			sys.exit(1)
 	
+
 	def connect_to_manager(self):
 		# Create socket to connect to manager
 		self.manager_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.manager_sock.connect((self.host, self.port))
+		try:
+			self.manager_sock.connect((self.host, self.port))
+		except:
+			print("Server not awake. Try again later.")
+			sys.exit(1)
 
 		# Send manager password for authenticity and say its ready for batches
 		message = json.dumps({"status": "ready", "password": "dogecoin123"})
 		message = len(message).to_bytes(8, "little") + message.encode("ascii")
 		self.manager_sock.sendall(message)
-		
+
 		# Listen to messages from manager about range of passwords to bruteforce
 		self.listen_for_batch()
 
+
 	def listen_for_batch(self):
-		# Read length of message from manager
-		message_len = self.manager_sock.recv(8)
-		if not message_len:
-			self.manager_sock.close()
-			return
-		message_len = int.from_bytes(message_len, "little")
 
-		# Read message from manager
-		message = ""
-		total_read = 0
 		while True:
-			data = self.manager_sock.recv(512).decode("ascii")
-			total_read += len(data)
-			message += data
-			if total_read == message_len:
-				break
-		
-		# Determine if batch is valid and get cracked dict, start, and end range values
-		message_json = {}
-		cracked = ""
-		start = 0
-		end = 0
-		try:
-			message_json = json.loads(message)
-			cracked = message_json["cracked"]
-			start = message_json["start"]
-			end = message_json["end"]
-		except:
-			self.manager_sock.close()
-			return
+			# Read length of message from manager
+			message_len = self.manager_sock.recv(8)
+			if not message_len:
+				self.manager_sock.close()
+				print("Server disconnected.")
+				sys.exit(1)
+			message_len = int.from_bytes(message_len, "little")
 
-		# Crack the current batch with the given range on the hashes that are not cracked yet
-		self.crack_batch(cracked, start, end)
+			# Read message from manager
+			message = ""
+			total_read = 0
+			while True:
+				data = self.manager_sock.recv(512).decode("ascii")
+				total_read += len(data)
+				message += data
+				if total_read == message_len:
+					break
+		
+			# Determine if batch is valid and get cracked dict, start, and end range values
+			message_json = {}
+			cracked = ""
+			start = 0
+			end = 0
+			try:
+				message_json = json.loads(message)
+				cracked = message_json["cracked"]
+				start = message_json["start"]
+				end = message_json["end"]
+			except:
+				print("Invalid batch message received from manager.")
+				self.manager_sock.close()
+				sys.exit(1)
+
+			# Crack the current batch with the given range on the hashes that are not cracked yet
+			self.crack_batch(cracked, start, end)
 	
+
 	def crack_batch(self, cracked, start, end):
 		# 1.) Compute all potential passwords for given batch
 		# 2.) Iterate over all hashes that are trying to be cracked
 		# 3.) Compare hash with candidate if the hash hasn't been cracked already
 		# 4.) If equals, password has been cracked
 
-		for candidate in self.get_candidates(start, end):
-			cand_hash = hashlib.md5(candidate.encode()).hexdigest()
-			for password_hash in cracked:
-				if not cracked[password_hash] and cand_hash == password_hash:
-					print(f"Password cracked: {candidate}")
-			
+		cracked = [h for h in cracked.keys() if not cracked[h]]
+		print(cracked)
+		try:
+			cracked_hashes = {}
+			for candidate in self.get_candidates(start, end):
+				cand_hash = hashlib.md5(candidate.encode()).hexdigest()
+				for password_hash in cracked:
+					if cand_hash == password_hash:
+						cracked_hashes[cand_hash] = candidate
+		except:
+			self.respond_failure()
+
+		self.respond_success(cracked_hashes)
+
+
 	def get_candidates(self, start_data, end_data):
 		# Get all potential password candidates for the given batch
 		cm = charmap.charmap()
@@ -129,6 +153,20 @@ class Worker:
 				yield candidate
 
 
+	def respond_success(self, cracked_hashes):
+		# Respond success to manager - success means there were no errors, not necessarily that a password was cracked
+		message = json.dumps({'status': 'done', 'cracked': cracked_hashes})
+		message = len(message).to_bytes(8, "little") + message.encode("ascii")
+		self.manager_sock.sendall(message)
+
+
+	def respond_failure(self):
+		# Respond failure to manager - something failed while cracking passwords
+		message = json.dumps({'status': 'failed'})
+		message = len(message).to_bytes(8, "little") + message.encode("ascii")
+		self.manager_sock.sendall(message)
+
+
 	def run_worker(self):
 		# Parse command line arguments
 		args = sys.argv[1:]
@@ -141,6 +179,7 @@ class Worker:
 		# Query name server to get host and port
 		project_name = args[0]
 		self.query_ns(project_name)
+
 		self.connect_to_manager()
 
 if __name__ == '__main__':
