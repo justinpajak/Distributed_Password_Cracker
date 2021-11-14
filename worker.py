@@ -65,6 +65,7 @@ class Worker:
 	def listen_for_batch(self):
 
 		while True:
+			print('Waiting for batch...\n')
 			# Read length of message from manager
 			message_len = self.manager_sock.recv(8)
 			if not message_len:
@@ -108,8 +109,11 @@ class Worker:
 		# 3.) Compare hash with candidate if the hash hasn't been cracked already
 		# 4.) If equals, password has been cracked
 
-		cracked = [h for h in cracked.keys() if not cracked[h]]
+		print("Computing batch: ")
 		print(cracked)
+		print(f"Start: {start}, End: {end}\n")
+		cracked = [h for h in cracked.keys() if not cracked[h]]
+
 		try:
 			cracked_hashes = {}
 			for candidate in self.get_candidates(start, end):
@@ -120,6 +124,8 @@ class Worker:
 		except:
 			self.respond_failure()
 
+		print("Done with batch.")
+		print(f"Cracked: {cracked_hashes}\n\n")
 		self.respond_success(cracked_hashes)
 
 
@@ -155,7 +161,7 @@ class Worker:
 
 	def respond_success(self, cracked_hashes):
 		# Respond success to manager - success means there were no errors, not necessarily that a password was cracked
-		message = json.dumps({'status': 'done', 'cracked': cracked_hashes})
+		message = json.dumps({'status': 'success', 'cracked': cracked_hashes})
 		message = len(message).to_bytes(8, "little") + message.encode("ascii")
 		self.manager_sock.sendall(message)
 
