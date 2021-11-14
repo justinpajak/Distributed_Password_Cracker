@@ -1,4 +1,5 @@
 import socket
+import sys
 import json
 import os
 import threading
@@ -7,7 +8,7 @@ import select
 
 import charmap
 
-SYMBOLS = 91
+SYMBOLS = 67
 NS_HOST = 'catalog.cse.nd.edu'
 NS_PORT = 9097
 
@@ -25,33 +26,59 @@ class Manager:
     be tried
     """
     def __init__(self, max_length, batch_size):
-        self.workers = {}
+        self.workers = []
         self.hashes = []
         self.batch_size = batch_size
-        self.intervals = {
-            "available": [[0, SYMBOLS**max_length - 1]],
-            "working": []
-        } 
+        self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1,
+            max_length+1)]
+        self.working = []
 
     def load_hashes(self, filename):
         with open(filename, 'r') as fr:
             self.hashes = [line.strip() for line in fr.readlines()]
 
     def batch(self):
-        if not self.intervals["available"]:
+        if not self.available:
             return None
+        
+        to_batch = self.batch_size
+        start = [self.available[0][0], self.available[0][1]]
+        end = [0, 0]
+        while to_batch > 0:
+            if to_batch >= self.available[0][2] - self.available[0][1]:
+                if len(self.available) == 1:
+                    end[0], end[1] = self.available[0], self.available[2]
+                    self.available.pop(0)
+                    break
+                else:
+                    to_batch -= self.available[0][2] - self.available[0][1]
+                    self.available.pop(0)
+            else:
+                end[0] = self.available[0][0]
+                end[1] = self.available[0][1] + to_batch
+                self.available[0][1] = end[1] + 1
+                to_batch = 0
 
-        start = self.intervals["available"][0][0]
-        end = min(self.intervals["available"][0][1], start+self.batch_size)
-        self.intervals["available"][0][0] = end+1
-
-        if self.intervals["available"][0][1] <= self.intervals["available"][0][0]:
-            self.intervals["available"].pop(0)
-
-        self.intervals["working"].append((start, end))
+        self.working.append((start, end))
 
         return start, end
 
+    def accept_worker(self, conn):
+        w = {"conn": conn, "lastheardfrom": time.time()}
+        start, end = self.batch()
+        w["interval"] = (start, end)
+        order = {"cracked": {}, "start": [start[0], start[1]], "end": [end[0], end[1]]}
+        for h in self.hashes:
+            order["cracked"][h] = False
+        
+        conn.sendall(json.dumps(order).encode('utf-8'))
+        print("Sent work order", json.dumps(order).encode('utf-8'))
+
+
+def usage():
+    print(f"Usage: {sys.argv[0]} <hashfile>")
+    print("    hashfile: name of file containing password hashes")
+    sys.exit(1)
 
 def update_ns(name, port):
     while True:
@@ -62,12 +89,15 @@ def update_ns(name, port):
             "name": name
         }
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.sendto(json.dumps(server_info).encode('utf-8'), (NS_HOST, NS_PORT))
         time.sleep(60)
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        usage()
     m = Manager(3, 9999)
+    m.load_hashes(sys.argv[1])
     hostname = socket.gethostname()
     projname = "dps-manager"
 
@@ -88,10 +118,11 @@ if __name__ == "__main__":
                 print("Found New Client")
                 conn, addr = s.accept()
                 socks.append(conn)
+                m.accept_worker(conn)
             else:
                 try:
                     pass
-                    #m.accept_worker(s)
+                    m.accept_worker(s)
                 except ConnectionResetError:
                     pass
                     #m.cleanup(s)
