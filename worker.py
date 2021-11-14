@@ -8,7 +8,7 @@ import hashlib
 import charmap
 import os
 
-SYMBOLS = 91
+SYMBOLS = 67
 
 class Worker:
 
@@ -42,7 +42,7 @@ class Worker:
 		if self.host == None or self.port == None:
 			sys.stderr.write("Name server query invalid.")
 			sys.exit(1)
-	
+
 
 	def connect_to_manager(self):
 		# Create socket to connect to manager
@@ -101,7 +101,7 @@ class Worker:
 
 			# Crack the current batch with the given range on the hashes that are not cracked yet
 			self.crack_batch(cracked, start, end)
-	
+
 
 	def crack_batch(self, cracked, start, end):
 		# 1.) Compute all potential passwords for given batch
@@ -151,8 +151,8 @@ class Worker:
 				candidate = ['0'] * l
 				i = l
 				while code > 0:
-					candidate[i - 1] = cm.int_to_char[code % 91]
-					code //= 91
+					candidate[i - 1] = cm.int_to_char[code % SYMBOLS]
+					code //= SYMBOLS
 					i -= 1
 				c = "".join(candidate)
 				candidate = "".join(candidate)
