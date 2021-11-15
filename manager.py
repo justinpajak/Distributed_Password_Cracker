@@ -93,6 +93,22 @@ def update_ns(name, port):
         s.sendto(json.dumps(server_info).encode('utf-8'), (NS_HOST, NS_PORT))
         time.sleep(60)
 
+def handle_input(m, command):
+    command = command.split(' ')
+    if command[0] == "help":
+        print("Command List:")
+        print("    help: show this menu")
+        print("    add <hash>: add hash string <hash> to workload")
+        print("    addfile <hashfile>: add hashes in file <hashfile> to workload")
+        print("    system: display system information")
+    elif command[0] == "add":
+        print(command[1])
+    elif command[0] == "addfile":
+        print(command[1])
+    elif command[0] == "system":
+        print(m.workers)
+    print("> ", end="", flush=True)
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         usage()
@@ -104,13 +120,17 @@ if __name__ == "__main__":
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((hostname, 0))
     port = server.getsockname()[1]
-    socks = [server]
+    socks = [server, sys.stdin]
     print(f'Manager listening on port {port}')
     server.listen()
     
     ns_thread = threading.Thread(target=update_ns, args=(projname, port))
     ns_thread.start()
     
+    os.system('clear')
+    print("Distributed Password Cracker - Manager")
+    print("-- type help for command list")
+    print("\n> ", end="", flush=True)
     while True:
         r, w, x = select.select(socks, [], [])
         for s in r:
@@ -119,12 +139,10 @@ if __name__ == "__main__":
                 print("New worker with id {conn.fileno()}")
                 socks.append(conn)
                 m.accept_worker(conn)
+            elif s == sys.stdin:
+                handle_input(m, sys.stdin.readline().strip())
             else:
-                try:
-                    pass
-                    m.accept_worker(s)
-                except ConnectionResetError:
-                    pass
+                pass
                     #m.cleanup(s)
                 
 
