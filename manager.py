@@ -46,7 +46,7 @@ class Manager:
         if not self.available:
             return None, None
         
-        to_batch = self.batch_size
+        to_batch = self.batch_size-1
         start = [self.available[0][0], self.available[0][1]]
         end = [0, 0]
         while to_batch > 0:
@@ -89,12 +89,15 @@ class Manager:
             message += conn.recv(512).decode("ascii")
 
         message_json = json.loads(message)
+        print(message_json)
         if message_json['status'] == 'failure':
             raise ConnectionResetError
-        cracked = message_json['cracked']
-        for c in cracked:
+        for c in message_json['cracked']:
             self.hashes.remove(c)
-            self.cracked.append((cracked[c], c))
+            self.cracked.append((message_json['cracked'][c], c))
+
+        if not self.hashes:
+            return
 
         # Update manager-side info
         self.workers[conn.fileno()]["lastheardfrom"] = time.time()
@@ -104,7 +107,9 @@ class Manager:
         # Update worker with new batch
         order = {"crack": [h for h in self.hashes], "start": [start[0], start[1]], "end": [end[0], end[1]]}
 
-        conn.sendall(json.dumps(order).encode('utf-8'))
+        message = json.dumps(order)
+        message = len(message).to_bytes(8, "little") + message.encode("ascii")
+        conn.sendall(message)
         print(f"Sent interval to {conn.fileno()}: {start} {end}")
 
     def cleanup(self, conn):
@@ -112,13 +117,16 @@ class Manager:
         if w["interval"] not in self.working:
             return
         self.working.remove(w["interval"])
-        for length in range(w["interval"][0][0], w["interval"][1][0]+1):
-            if length == w["interval"][0][0]:
-                self.available.insert(0, [length, w["interval"][0][1], SYMBOLS**length - 1])
-            elif length == w["interval"][1][0]:
-                self.available.insert(0, [length, 0, w["interval"][1][1]])
-            else:
-                self.available.insert(0, [length, 0, SYMBOLS**length - 1])
+        if w["interval"][0][0] == w["interval"][1][0]:
+            self.available.insert(0, w["interval"][0][1], w["interval"][1][1])
+        else:
+            for length in range(w["interval"][0][0], w["interval"][1][0]+1):
+                if length == w["interval"][0][0]:
+                    self.available.insert(0, [length, w["interval"][0][1], SYMBOLS**length - 1])
+                elif length == w["interval"][1][0]:
+                    self.available.insert(0, [length, 0, w["interval"][1][1]])
+                else:
+                    self.available.insert(0, [length, 0, SYMBOLS**length - 1])
 
         print("Available Intervals: ", self.available)
          
@@ -139,6 +147,7 @@ def update_ns(name, port):
 
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.sendto(json.dumps(server_info).encode('utf-8'), (NS_HOST, NS_PORT))
+        s.close()
         time.sleep(60)
 
 def handle_input(m, command):
@@ -177,7 +186,7 @@ if __name__ == "__main__":
 
     # Open up server
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind((hostname, 0))
+    server.bind((socket.gethostname(), 0))
     port = server.getsockname()[1]
     socks = [server, sys.stdin]
     server.listen()
@@ -194,24 +203,26 @@ if __name__ == "__main__":
     
     # Main loop
     while True:
+        print("", end="", flush=True)
         r, w, x = select.select(socks, [], [])
         for s in r:
-            if s == server:
-                conn, addr = s.accept()
-                print("New worker with id {conn.fileno()}")
-                socks.append(conn)
-                m.accept_worker(conn)
-            elif s == sys.stdin:
+            if s == sys.stdin:
                 try:
                     handle_input(m, sys.stdin.readline().strip())
                 except:
                     print("Invalid Command")
                     print("> ", end="", flush=True)
-            else:
-                try:
+            elif m.hashes:
+                if s == server:
+                    conn, addr = s.accept()
+                    print(f"New worker with id {conn.fileno()}")
+                    socks.append(conn)
+                    m.accept_worker(conn)
+                else:
+                    #try:
                     m.update_worker(s)
-                except:
-                    m.cleanup(s)
-                    socks.remove(s)
-                
+                    #except:
+                        #m.cleanup(s)
+                        #socks.remove(s)
+                    
 
