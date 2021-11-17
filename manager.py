@@ -30,6 +30,7 @@ class Manager:
         self.hashes = []
         self.cracked = []
         self.batch_size = batch_size
+        self.max_length = max_length
         self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1,
             max_length+1)]
         self.working = []
@@ -73,7 +74,7 @@ class Manager:
         message = json.dumps(order)
         message = len(message).to_bytes(8, "little") + message.encode("ascii")
         conn.sendall(message)
-        print(f"Sent interval to {conn.fileno}: {start} {end}")
+        #print(f"Sent interval to {conn.fileno}: {start} {end}")
 
     def update_worker(self, conn):
         # Receive message from worker
@@ -85,12 +86,13 @@ class Manager:
             message += conn.recv(512).decode("ascii")
 
         message_json = json.loads(message)
-        print(message_json)
         if message_json['status'] == 'failure':
             raise ConnectionResetError
         for c in message_json['cracked']:
             self.hashes.remove(c)
+            pwd = message_json['cracked'][c]
             self.cracked.append((message_json['cracked'][c], c))
+            print(f"Cracked {c} - {pwd}")
 
         if not self.hashes:
             return
@@ -106,7 +108,7 @@ class Manager:
         message = json.dumps(order)
         message = len(message).to_bytes(8, "little") + message.encode("ascii")
         conn.sendall(message)
-        print(f"Sent interval to {conn.fileno()}: {start} {end}")
+        #print(f"Sent interval to {conn.fileno()}: {start} {end}")
 
     def cleanup(self, conn):
         w = self.workers.pop(conn.fileno())
@@ -125,7 +127,15 @@ class Manager:
                     self.available.insert(0, [length, 0, SYMBOLS**length - 1])
 
         print("Available Intervals: ", self.available)
-         
+
+    def display_progress(self):
+        bar_length = 20
+        full = sum((SYMBOLS**length for length in range(1, m.max_length+1)))
+        curr = full - sum((i[1] - i[0] for i in self.available))
+        bars = int(round(bar_length*(1- curr/full)))
+        percent = round(100*(1 - curr/full), 2)
+        bar = "#"*bars + "-"*(bar_length-bars)
+        print(f"[{bar}] {percent}%")
 
 def usage():
     print(f"Usage: {sys.argv[0]} <hashfile>")
@@ -160,6 +170,8 @@ def handle_input(m, command):
         print(command[1])
     elif command[0] == "system":
         print(m.workers)
+    elif command[0] == "prog":
+        m.display_progress()
     else:
         print("Invalid Command")
     print("> ", end="", flush=True)
@@ -167,7 +179,7 @@ def handle_input(m, command):
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         usage()
-    m = Manager(5, 2000)
+    m = Manager(4, 100000)
     m.load_hashes(sys.argv[1])
     hostname = socket.gethostbyname(socket.gethostname())
     projname = "dps-manager"
@@ -197,7 +209,8 @@ if __name__ == "__main__":
             if s == sys.stdin:
                 try:
                     handle_input(m, sys.stdin.readline().strip())
-                except:
+                except Exception as ex:
+                    print(ex)
                     print("Invalid Command")
                     print("> ", end="", flush=True)
             elif m.hashes:
