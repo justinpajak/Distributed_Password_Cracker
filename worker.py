@@ -53,11 +53,6 @@ class Worker:
 			print("Server not awake. Try again later.")
 			sys.exit(1)
 
-		# Send manager password for authenticity and say its ready for batches
-		message = json.dumps({"status": "ready", "password": "dogecoin123"})
-		message = len(message).to_bytes(8, "little") + message.encode("ascii")
-		self.manager_sock.sendall(message)
-
 		# Listen to messages from manager about range of passwords to bruteforce
 		self.listen_for_batch()
 
@@ -91,7 +86,7 @@ class Worker:
 			end = 0
 			try:
 				message_json = json.loads(message)
-				cracked = message_json["cracked"]
+				crack = message_json["crack"]
 				start = message_json["start"]
 				end = message_json["end"]
 			except:
@@ -100,25 +95,24 @@ class Worker:
 				sys.exit(1)
 
 			# Crack the current batch with the given range on the hashes that are not cracked yet
-			self.crack_batch(cracked, start, end)
+			self.crack_batch(crack, start, end)
 
 
-	def crack_batch(self, cracked, start, end):
+	def crack_batch(self, crack, start, end):
 		# 1.) Compute all potential passwords for given batch
 		# 2.) Iterate over all hashes that are trying to be cracked
 		# 3.) Compare hash with candidate if the hash hasn't been cracked already
 		# 4.) If equals, password has been cracked
 
 		print("Computing batch: ")
-		print(cracked)
+		print(crack)
 		print(f"Start: {start}, End: {end}\n")
-		cracked = [h for h in cracked.keys() if not cracked[h]]
 
 		try:
 			cracked_hashes = {}
 			for candidate in self.get_candidates(start, end):
 				cand_hash = hashlib.md5(candidate.encode()).hexdigest()
-				for password_hash in cracked:
+				for password_hash in crack:
 					if cand_hash == password_hash:
 						cracked_hashes[cand_hash] = candidate
 		except:
@@ -139,25 +133,46 @@ class Worker:
 			end = 0
 			if l == length1:
 				start = start_data[1]
-				end = SYMBOLS ** l
+				if l == length2:
+					end = end_data[1]
+				else:
+					end = (SYMBOLS ** l) - 1
 			elif l == length2:
 				start = 0
 				end = end_data[1]
 			else:
 				start = 0
-				end = SYMBOLS ** l
-			
-			for code in range(start, end):
-				candidate = ['0'] * l
-				i = l
-				while code > 0:
-					candidate[i - 1] = cm.int_to_char[code % SYMBOLS]
-					code //= SYMBOLS
-					i -= 1
-				c = "".join(candidate)
-				candidate = "".join(candidate)
-				yield candidate
+				end = (SYMBOLS ** l) - 1
+	
+			start_list = [0] * l
+			i = l - 1
+			while start > 0:
+				start_list[i] = start % SYMBOLS
+				start //= SYMBOLS
+				i -= 1
 
+			end_list = [0] * l
+			i = l - 1
+			while end > 0:
+				end_list[i] = end % SYMBOLS
+				end //= SYMBOLS
+				i -= 1
+
+			while start_list != end_list:
+				i = l - 1
+				while i >= 0:
+					candidate = "".join([cm.int_to_char[c] for c in start_list])
+					yield candidate
+					start_list[i] += 1
+					if start_list[i] == SYMBOLS:
+						start_list[i] = 0
+						i -= 1
+					else:
+						break
+			candidate = "".join([cm.int_to_char[c] for c in start_list])
+			yield candidate
+				
+	
 
 	def respond_success(self, cracked_hashes):
 		# Respond success to manager - success means there were no errors, not necessarily that a password was cracked
