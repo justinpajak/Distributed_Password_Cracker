@@ -22,8 +22,10 @@ class Manager:
     Properties:
     workers: dictionary containing worker information
     hashes: list of hashes to match against
-    intervals: dictionary of password combination intervals that still need to
+    cracked: list of password, hash tuples
+    available: list of password combination intervals that still need to
     be tried
+    working: list of password combination intervals currently being worked on
     """
     def __init__(self, max_length, batch_size):
         self.workers = {}
@@ -73,13 +75,7 @@ class Manager:
 
     def accept_worker(self, conn):
         self.workers[conn.fileno()] = {"conn": conn, "lastheardfrom": time.time()}
-        start, end = self.batch()
-        self.workers[conn.fileno()]["interval"] = (start, end)
-        order = {"crack": [h for h in self.hashes], "start": [start[0], start[1]], "end": [end[0], end[1]]}
-        
-        message = json.dumps(order)
-        message = len(message).to_bytes(8, "little") + message.encode("ascii")
-        conn.sendall(message)
+        self.send_work(conn)
 
     def update_worker(self, conn):
         # Receive message from worker
@@ -98,11 +94,16 @@ class Manager:
             pwd = message_json['cracked'][c]
             self.cracked.append((message_json['cracked'][c], c))
 
+        # Update manager-side info
+        self.workers[conn.fileno()]["lastheardfrom"] = time.time()
+        
         if not self.hashes:
             return
 
-        # Update manager-side info
-        self.workers[conn.fileno()]["lastheardfrom"] = time.time()
+        self.send_work(conn)
+    
+    def send_work(self, conn):
+        # Assign a new batch
         start, end = self.batch()
         self.workers[conn.fileno()]["interval"] = (start, end)
         
@@ -137,9 +138,10 @@ class Manager:
         percent = abs(round(100*(1 - curr/full), 2))
         bar = "#"*bars + "-"*(bar_length-bars)
         print(f"[{bar}] {percent}%")
-        print("Cracked:")
-        for msg, cipher in self.cracked:
-            print("    ", msg, "-", cipher)
+        if self.cracked:
+            print("Cracked:")
+            for msg, cipher in self.cracked:
+                print("    ", msg, "-", cipher)
 
 def update_ns(name, port):
     while True:
@@ -165,6 +167,7 @@ def handle_input(m, command):
         print("    system: display system information")
         print("    length <length>: change max password length")
         print("    batch <size>: change batch size")
+        print("    exit: exit the program")
     elif command[0] == "add":
         if m.available:
             print('Error: Wait for current workload to finish')
@@ -175,19 +178,27 @@ def handle_input(m, command):
     elif command[0] == "prog":
         m.display_progress()
     elif command[0] == "length":
-        m.max_length = int(command[1])
-        print(f'Set max length to {m.max_length}')
+        try:
+            m.max_length = int(command[1])
+            print(f'Set max length to {m.max_length}')
+        except IndexError:
+            print(f'Current max length is {m.max_length}')
     elif command[0] == "batch":
-        m.batch_size = int(command[1])
-        print(f'Set batch size to {m.batch_size}')
+        try:
+            m.batch_size = int(command[1])
+            print(f'Set batch size to {m.batch_size}')
+        except IndexError:
+            print(f'Current batch size is {m.batch_size}')
+    elif command[0] == "exit":
+        sys.exit(0)
     else:
         raise Exception
     print("> ", end="", flush=True)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Distributed Password Cracker')
-    parser.add_argument('--length', type=int, help='maximum length of password')
-    parser.add_argument('--batch', type=int, help='size of batch')
+    parser.add_argument('--length', type=int, default=4, help='maximum length of password')
+    parser.add_argument('--batch', type=int, default=10000, help='size of batch')
     parser.add_argument('hashfiles', nargs='*', type=str, help='hashes to crack')
     args = parser.parse_args()
 
@@ -203,8 +214,10 @@ if __name__ == "__main__":
     socks = [server, sys.stdin]
     server.listen()
     
+    print(hostname, port)
+    sys.exit(0)
     # Start thread to constantly update name server
-    ns_thread = threading.Thread(target=update_ns, args=(projname, port))
+    ns_thread = threading.Thread(target=update_ns, args=(projname, port), daemon=True)
     ns_thread.start()
     
     # Set up interactive shell
@@ -214,6 +227,7 @@ if __name__ == "__main__":
     print("\n> ", end="", flush=True)
     
     # Main loop
+    is_waiting = False
     while True:
         print("", end="", flush=True)
         r, w, x = select.select(socks, [], [])
@@ -236,5 +250,18 @@ if __name__ == "__main__":
                     except:
                         m.cleanup(s)
                         socks.remove(s)
-                    
+            else:
+                is_waiting = True    
+        if is_waiting:
+            # Restart all workers
+            for s in r:
+                if s == sys.stdin or s == server:
+                    continue
+                m.send_work(s)
+        else:
+            # Check for timeouts
+            curr = time.time()
+            for fn in m.workers:
+                if curr - m.workers[fn]['lastheardfrom'] > 30:
+                    m.cleanup(m.workers[fn]['conn'])
 
