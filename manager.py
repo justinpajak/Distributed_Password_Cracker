@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import select
+import argparse
 
 import charmap
 
@@ -29,14 +30,17 @@ class Manager:
         self.workers = {}
         self.hashes = []
         self.cracked = []
+        self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1, max_length+1)]
         self.batch_size = batch_size
-        self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1,
-            max_length+1)]
         self.working = []
 
-    def load_hashes(self, filename):
-        with open(filename, 'r') as fr:
-            self.hashes = [line.strip() for line in fr.readlines()]
+    def load_hashes(self, filenames):
+        self.hashes = []
+        for filename in filenames:
+            with open(filename, 'r') as fr:
+                self.hashes.extend([line.strip() for line in fr.readlines()])
+        self.available = [[length, 0, SYMBOLS**length - 1] for length in
+                range(1, self.max_length+1)]
 
     def batch(self):
         if not self.available:
@@ -148,7 +152,10 @@ def handle_input(m, command):
     elif command[0] == "add":
         print(command[1])
     elif command[0] == "addfile":
-        print(command[1])
+        if m.available:
+            print('Error: Wait for current workload to finish')
+        else:
+            m.load_hashes([command[1:])
     elif command[0] == "system":
         print(m.workers)
     else:
@@ -156,12 +163,17 @@ def handle_input(m, command):
     print("> ", end="", flush=True)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        usage()
-    m = Manager(3, 9999)
-    m.load_hashes(sys.argv[1])
+    parser = argparse.ArgumentParser(description='Distributed Password Cracker')
+    parser.add_argument('--length', type=int, help='maximum length of password')
+    parser.add_argument('--batch', type=int, help='size of batch')
+    parser.add_argument('hashfiles', nargs='*', type=str, help='hashes to crack')
+    args = parser.parse_args()
+
+    m = Manager(args.length, args.batch)
+    m.load_hashes(args.hashfiles)
     hostname = socket.gethostbyname(socket.gethostname())
     projname = "dps-manager"
+    print(m.hashes)
 
     # Open up server
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
