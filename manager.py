@@ -35,6 +35,7 @@ class Manager:
         self.batch_size = batch_size
         self.max_length = max_length
         self.working = []
+        self.complete = False
 
     def load_hashes(self, filenames):
         self.hashes = []
@@ -74,7 +75,7 @@ class Manager:
         return start, end
 
     def accept_worker(self, conn):
-        self.workers[conn.fileno()] = {"conn": conn, "lastheardfrom": time.time()}
+        self.workers[conn.fileno()] = {"conn": conn}
         self.send_work(conn)
 
     def update_worker(self, conn):
@@ -95,15 +96,16 @@ class Manager:
             self.cracked.append((message_json['cracked'][c], c))
 
         # Update manager-side info
-        self.workers[conn.fileno()]["lastheardfrom"] = time.time()
         
         if not self.hashes:
+            self.complete = True
             return
 
         self.send_work(conn)
     
     def send_work(self, conn):
         # Assign a new batch
+        self.workers[conn.fileno()]["lastheardfrom"] = time.time()
         start, end = self.batch()
         self.workers[conn.fileno()]["interval"] = (start, end)
         
@@ -120,7 +122,7 @@ class Manager:
             return
         self.working.remove(w["interval"])
         if w["interval"][0][0] == w["interval"][1][0]:
-            self.available.insert(0, [w["interval"][0][1], w["interval"][1][1]])
+            self.available.insert(0, [w["interval"][0][0], w["interval"][0][1], w["interval"][1][1]])
         else:
             for length in range(w["interval"][0][0], w["interval"][1][0]+1):
                 if length == w["interval"][0][0]:
@@ -169,10 +171,12 @@ def handle_input(m, command):
         print("    batch <size>: change batch size")
         print("    exit: exit the program")
     elif command[0] == "add":
-        if m.hashes:
-            print('Error: Wait for current workload to finish')
-        else:
+        if not m.hashes or not m.available:
             m.load_hashes(command[1:])
+        else:
+            print(m.hashes)
+            print(m.available)
+            print('Error: Wait for current workload to finish')
     elif command[0] == "system":
         print(m.workers)
     elif command[0] == "prog":
@@ -226,9 +230,9 @@ if __name__ == "__main__":
     print("\n> ", end="", flush=True)
     
     # Main loop
-    is_waiting = False
+    m.complete = m.hashes == []
+    prev = time.time()
     while True:
-        print("", end="", flush=True)
         r, w, x = select.select(socks, [], [])
         for s in r:
             if s == sys.stdin:
@@ -237,10 +241,11 @@ if __name__ == "__main__":
                 except Exception as ex:
                     print("Invalid Command")
                     print("> ", end="", flush=True)
-            elif m.hashes:
+            elif m.hashes and m.available:
                 if s == server:
                     conn, addr = s.accept()
                     print(f"New worker with id {conn.fileno()}")
+                    print("> ", end="", flush=True)
                     socks.append(conn)
                     m.accept_worker(conn)
                 else:
@@ -249,18 +254,23 @@ if __name__ == "__main__":
                     except:
                         m.cleanup(s)
                         socks.remove(s)
-            else:
-                is_waiting = True    
-        if is_waiting:
+        if m.complete:
+            if not m.hashes:
+                continue
+
             # Restart all workers
-            for s in r:
+            for s in socks:
                 if s == sys.stdin or s == server:
                     continue
                 m.send_work(s)
+            m.complete = False
         else:
-            # Check for timeouts
+            # Check for timeouts every 5 seconds
             curr = time.time()
-            for fn in m.workers:
+            if curr - prev < 5:
+                continue
+            prev = curr
+            for fn in list(m.workers):
                 if curr - m.workers[fn]['lastheardfrom'] > 30:
                     m.cleanup(m.workers[fn]['conn'])
 
