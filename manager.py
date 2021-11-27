@@ -7,7 +7,6 @@ import time
 import select
 import argparse
 
-import charmap
 
 SYMBOLS = 67
 NS_HOST = 'catalog.cse.nd.edu'
@@ -38,10 +37,13 @@ class Manager:
     def load_hashes(self, filenames):
         self.hashes = []
         for filename in filenames:
-            with open(filename, 'r') as fr:
-                self.hashes.extend([line.strip() for line in fr.readlines()])
+            try:
+                with open(filename, 'r') as fr:
+                    self.hashes.extend([line.strip() for line in fr.readlines()])
+            except:
+                self.hashes.append(filename)
         self.available = [[length, 0, SYMBOLS**length - 1] for length in
-                range(1, self.max_length+1)]
+                    range(1, self.max_length+1)]
 
     def batch(self):
         if not self.available:
@@ -78,7 +80,6 @@ class Manager:
         message = json.dumps(order)
         message = len(message).to_bytes(8, "little") + message.encode("ascii")
         conn.sendall(message)
-        #print(f"Sent interval to {conn.fileno}: {start} {end}")
 
     def update_worker(self, conn):
         # Receive message from worker
@@ -96,7 +97,6 @@ class Manager:
             self.hashes.remove(c)
             pwd = message_json['cracked'][c]
             self.cracked.append((message_json['cracked'][c], c))
-            print(f"Cracked {c} - {pwd}")
 
         if not self.hashes:
             return
@@ -112,7 +112,6 @@ class Manager:
         message = json.dumps(order)
         message = len(message).to_bytes(8, "little") + message.encode("ascii")
         conn.sendall(message)
-        #print(f"Sent interval to {conn.fileno()}: {start} {end}")
 
     def cleanup(self, conn):
         w = self.workers.pop(conn.fileno())
@@ -130,21 +129,18 @@ class Manager:
                 else:
                     self.available.insert(0, [length, 0, SYMBOLS**length - 1])
 
-        print("Available Intervals: ", self.available)
 
     def display_progress(self):
-        bar_length = 20
+        bar_length = 60
         full = sum((SYMBOLS**length for length in range(1, m.max_length+1)))
         curr = full - sum((i[1] - i[0] for i in self.available))
         bars = int(round(bar_length*(1- curr/full)))
-        percent = round(100*(1 - curr/full), 2)
+        percent = abs(round(100*(1 - curr/full), 2))
         bar = "#"*bars + "-"*(bar_length-bars)
         print(f"[{bar}] {percent}%")
-
-def usage():
-    print(f"Usage: {sys.argv[0]} <hashfile>")
-    print("    hashfile: name of file containing password hashes")
-    sys.exit(1)
+        print("Cracked:")
+        for msg, cipher in self.cracked:
+            print("    ", msg, "-", cipher)
 
 def update_ns(name, port):
     while True:
@@ -165,22 +161,28 @@ def handle_input(m, command):
     if command[0] == "help":
         print("Command List:")
         print("    help: show this menu")
-        print("    add <hash>: add hash string <hash> to workload")
-        print("    addfile <hashfile>: add hashes in file <hashfile> to workload")
+        print("    add <hash>: add hashes to workload (raw text or filenames)")
+        print("    prog: show progress bar for current workload")
         print("    system: display system information")
+        print("    length <length>: change max password length")
+        print("    batch <size>: change batch size")
     elif command[0] == "add":
-        print(command[1])
-    elif command[0] == "addfile":
         if m.available:
             print('Error: Wait for current workload to finish')
         else:
-            m.load_hashes([command[1:])
+            m.load_hashes(command[1:])
     elif command[0] == "system":
         print(m.workers)
     elif command[0] == "prog":
         m.display_progress()
+    elif command[0] == "length":
+        m.max_length = int(command[1])
+        print(f'Set max length to {m.max_length}')
+    elif command[0] == "batch":
+        m.batch_size = int(command[1])
+        print(f'Set batch size to {m.batch_size}')
     else:
-        print("Invalid Command")
+        raise Exception
     print("> ", end="", flush=True)
 
 if __name__ == "__main__":
@@ -194,7 +196,6 @@ if __name__ == "__main__":
     m.load_hashes(args.hashfiles)
     hostname = socket.gethostbyname(socket.gethostname())
     projname = "dps-manager"
-    print(m.hashes)
 
     # Open up server
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -222,7 +223,6 @@ if __name__ == "__main__":
                 try:
                     handle_input(m, sys.stdin.readline().strip())
                 except Exception as ex:
-                    print(ex)
                     print("Invalid Command")
                     print("> ", end="", flush=True)
             elif m.hashes:
@@ -232,10 +232,10 @@ if __name__ == "__main__":
                     socks.append(conn)
                     m.accept_worker(conn)
                 else:
-                    #try:
-                    m.update_worker(s)
-                    #except:
-                        #m.cleanup(s)
-                        #socks.remove(s)
+                    try:
+                        m.update_worker(s)
+                    except:
+                        m.cleanup(s)
+                        socks.remove(s)
                     
 
