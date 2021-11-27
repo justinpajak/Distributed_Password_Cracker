@@ -120,7 +120,7 @@ class Manager:
             return
         self.working.remove(w["interval"])
         if w["interval"][0][0] == w["interval"][1][0]:
-            self.available.insert(0, w["interval"][0][1], w["interval"][1][1])
+            self.available.insert(0, [w["interval"][0][1], w["interval"][1][1]])
         else:
             for length in range(w["interval"][0][0], w["interval"][1][0]+1):
                 if length == w["interval"][0][0]:
@@ -169,7 +169,7 @@ def handle_input(m, command):
         print("    batch <size>: change batch size")
         print("    exit: exit the program")
     elif command[0] == "add":
-        if m.available:
+        if m.hashes:
             print('Error: Wait for current workload to finish')
         else:
             m.load_hashes(command[1:])
@@ -203,7 +203,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     m = Manager(args.length, args.batch)
-    m.load_hashes(args.hashfiles)
+    if args.hashfiles:
+        m.load_hashes(args.hashfiles)
     hostname = socket.gethostbyname(socket.gethostname())
     projname = "dps-manager"
 
@@ -214,8 +215,6 @@ if __name__ == "__main__":
     socks = [server, sys.stdin]
     server.listen()
     
-    print(hostname, port)
-    sys.exit(0)
     # Start thread to constantly update name server
     ns_thread = threading.Thread(target=update_ns, args=(projname, port), daemon=True)
     ns_thread.start()
