@@ -130,7 +130,7 @@ def update_ns(name, port):
             "type": "manager",
             "owner": os.environ['USER'],
             "port": port,
-            "name": name
+            "project": name
         }
 
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
