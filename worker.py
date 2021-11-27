@@ -32,7 +32,7 @@ class Worker:
 		self.port = None
 		for entry in json_data:
 			try:
-				if entry["type"] == "manager" and entry["project"] == project_name:
+				if entry["type"] == "manager" and entry["project"] == project_name and entry["port"] == 35802:
 					self.host = entry["address"]
 					self.port = int(entry["port"])
 			except:
@@ -60,7 +60,7 @@ class Worker:
 	def listen_for_batch(self):
 
 		while True:
-			print('Waiting for batch...\n')
+			#print('Waiting for batch...\n')
 			# Read length of message from manager
 			message_len = self.manager_sock.recv(8)
 			if not message_len:
@@ -104,9 +104,9 @@ class Worker:
 		# 3.) Compare hash with candidate if the hash hasn't been cracked already
 		# 4.) If equals, password has been cracked
 
-		print("Computing batch: ")
-		print(crack)
-		print(f"Start: {start}, End: {end}\n")
+		#print("Computing batch: ")
+		#print(crack)
+		#print(f"Start: {start}, End: {end}\n")
 
 		try:
 			cracked_hashes = {}
@@ -118,8 +118,10 @@ class Worker:
 		except:
 			self.respond_failure()
 
-		print("Done with batch.")
-		print(f"Cracked: {cracked_hashes}\n\n")
+		#print("Done with batch.")
+		if cracked_hashes:
+			print(f"Start: {start}, End: {end}")
+			print(f"Cracked: {cracked_hashes}\n\n")
 		self.respond_success(cracked_hashes)
 
 
