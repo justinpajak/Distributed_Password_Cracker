@@ -129,7 +129,6 @@ class Manager:
                 else:
                     self.available.insert(0, [length, 0, SYMBOLS**length - 1])
 
-
     def display_progress(self):
         bar_length = 60
         full = sum((SYMBOLS**length for length in range(1, m.max_length+1)))
