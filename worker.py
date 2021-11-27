@@ -32,7 +32,7 @@ class Worker:
 		self.port = None
 		for entry in json_data:
 			try:
-				if entry["type"] == "manager" and entry["project"] == project_name and entry["port"] == 35802:
+				if entry["type"] == "manager" and entry["project"] == project_name:
 					self.host = entry["address"]
 					self.port = int(entry["port"])
 			except:
