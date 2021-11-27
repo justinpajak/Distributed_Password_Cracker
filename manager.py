@@ -214,8 +214,6 @@ if __name__ == "__main__":
     socks = [server, sys.stdin]
     server.listen()
     
-    print(hostname, port)
-    sys.exit(0)
     # Start thread to constantly update name server
     ns_thread = threading.Thread(target=update_ns, args=(projname, port), daemon=True)
     ns_thread.start()
