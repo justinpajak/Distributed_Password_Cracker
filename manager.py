@@ -195,7 +195,13 @@ def handle_input(m, command):
         else:
             print('Error: Wait for current workload to finish')
     elif command[0] == "system":
-        print(m.workers)
+        t = time.time()
+        if not m.workers:
+            print("No workers")
+        else:
+            for fn in m.workers:
+                lastheardfrom = t - m.workers[fn]['lastheardfrom']        
+                print(f'Worker {fn} - Last heard from {lastheardfrom:.3} s ago')
     elif command[0] == "prog":
         m.display_progress()
     elif command[0] == "length":
