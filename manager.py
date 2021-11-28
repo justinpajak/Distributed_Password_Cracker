@@ -95,10 +95,14 @@ class Manager:
             pwd = message_json['cracked'][c]
             self.cracked.append((message_json['cracked'][c], c))
 
-        # Update manager-side info
-        
-        if not self.hashes:
+        # If workload is complete
+        if not self.hashes or not self.available:
             self.complete = True
+            print()
+            self.display_progress()
+            print("> ", end="", flush=True)
+            self.cracked.clear()
+            self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1, self.max_length+1)]
             return
 
         self.send_work(conn)
@@ -117,9 +121,13 @@ class Manager:
         conn.sendall(message)
 
     def cleanup(self, conn):
+        if conn.fileno not in self.workers:
+            return
+
         w = self.workers.pop(conn.fileno())
         if w["interval"] not in self.working:
             return
+        
         self.working.remove(w["interval"])
         if w["interval"][0][0] == w["interval"][1][0]:
             self.available.insert(0, [w["interval"][0][0], w["interval"][0][1], w["interval"][1][1]])
@@ -164,7 +172,7 @@ def handle_input(m, command):
     if command[0] == "help":
         print("Command List:")
         print("    help: show this menu")
-        print("    add <hash>: add hashes to workload (raw text or filenames)")
+        print("    add <hash ...>: add hashes to workload (raw text or filenames)")
         print("    prog: show progress bar for current workload")
         print("    system: display system information")
         print("    length <length>: change max password length")
@@ -174,8 +182,6 @@ def handle_input(m, command):
         if not m.hashes or not m.available:
             m.load_hashes(command[1:])
         else:
-            print(m.hashes)
-            print(m.available)
             print('Error: Wait for current workload to finish')
     elif command[0] == "system":
         print(m.workers)
@@ -184,6 +190,7 @@ def handle_input(m, command):
     elif command[0] == "length":
         try:
             m.max_length = int(command[1])
+            self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1, max_length+1)]
             print(f'Set max length to {m.max_length}')
         except IndexError:
             print(f'Current max length is {m.max_length}')
@@ -244,7 +251,7 @@ if __name__ == "__main__":
             elif m.hashes and m.available:
                 if s == server:
                     conn, addr = s.accept()
-                    print(f"New worker with id {conn.fileno()}")
+                    print(f"\nNew worker with id {conn.fileno()}")
                     print("> ", end="", flush=True)
                     socks.append(conn)
                     m.accept_worker(conn)
