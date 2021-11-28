@@ -208,7 +208,7 @@ def handle_input(m, command):
     elif command[0] == "length":
         try:
             m.max_length = int(command[1])
-            self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1, m.max_length+1)]
+            m.available = [[length, 0, SYMBOLS**length - 1] for length in range(1, m.max_length+1)]
             print(f'Set max length to {m.max_length}')
         except IndexError:
             print(f'Current max length is {m.max_length}')
