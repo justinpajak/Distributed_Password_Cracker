@@ -190,6 +190,7 @@ def handle_input(m, command):
         print("    system: display system information")
         print("    length <length>: change max password length")
         print("    batch <size>: change batch size")
+        print("    timeout <duration>: change time before workers are abandoned")
         print("    exit: exit the program")
     elif command[0] == "add":
         if not m.hashes or not m.available:
