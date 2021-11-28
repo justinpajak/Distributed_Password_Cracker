@@ -103,11 +103,11 @@ class Manager:
                 print("Finished Cracking. Results:")
                 for msg, cipher in self.cracked:
                     print("    ", msg, "-", cipher)
-            
-            # print total time to complete workload
-            duration = time.time() - start_time
-            duration = float("{:.2f}".format(duration))
-            print(f"Time: {duration} s")
+                
+                # print total time to complete workload
+                duration = time.time() - start_time
+                duration = float("{:.2f}".format(duration))
+                print(f"Time: {duration} s")
 
             print("> ", end="", flush=True)
             self.cracked.clear()
