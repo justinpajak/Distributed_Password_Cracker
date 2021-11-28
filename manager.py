@@ -111,6 +111,7 @@ class Manager:
 
             print("> ", end="", flush=True)
             self.cracked.clear()
+            self.hashes.clear()
             self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1, self.max_length+1)]
             return
 
@@ -256,6 +257,8 @@ if __name__ == "__main__":
     # Main loop
     m.complete = m.hashes == []
     prev = time.time()
+    global start_time
+    start_time = time.time()
     while True:
         r, w, x = select.select(socks, [], [])
         for s in r:
@@ -265,7 +268,7 @@ if __name__ == "__main__":
                 except Exception as ex:
                     print("Invalid Command")
                     print("> ", end="", flush=True)
-            elif m.hashes and m.available:
+            else:
                 if s == server:
                     conn, addr = s.accept()
                     print(f"\nNew worker with id {conn.fileno()}")
