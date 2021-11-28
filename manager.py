@@ -99,7 +99,16 @@ class Manager:
         if not self.hashes or not self.available:
             self.complete = True
             print()
-            self.display_progress()
+            if self.cracked:
+                print("Finished Cracking. Results:")
+                for msg, cipher in self.cracked:
+                    print("    ", msg, "-", cipher)
+            
+            # print total time to complete workload
+            duration = time.time() - start_time
+            duration = float("{:.2f}".format(duration))
+            print(f"Time: {duration} s")
+
             print("> ", end="", flush=True)
             self.cracked.clear()
             self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1, self.max_length+1)]
@@ -181,6 +190,8 @@ def handle_input(m, command):
     elif command[0] == "add":
         if not m.hashes or not m.available:
             m.load_hashes(command[1:])
+            global start_time
+            start_time = time.time()
         else:
             print('Error: Wait for current workload to finish')
     elif command[0] == "system":
