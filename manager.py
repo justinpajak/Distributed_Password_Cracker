@@ -34,6 +34,7 @@ class Manager:
         self.available = [[length, 0, SYMBOLS**length - 1] for length in range(1, max_length+1)]
         self.batch_size = batch_size
         self.max_length = max_length
+        self.timeout = 30
         self.working = []
         self.complete = False
 
@@ -97,6 +98,8 @@ class Manager:
 
         # If workload is complete
         if not self.hashes or not self.available:
+            if self.complete:
+                return
             self.complete = True
             print()
             if self.cracked:
@@ -131,7 +134,7 @@ class Manager:
         conn.sendall(message)
 
     def cleanup(self, conn):
-        if conn.fileno not in self.workers:
+        if conn.fileno() not in self.workers:
             return
 
         w = self.workers.pop(conn.fileno())
@@ -218,6 +221,12 @@ def handle_input(m, command):
             print(f'Set batch size to {m.batch_size}')
         except IndexError:
             print(f'Current batch size is {m.batch_size}')
+    elif command[0] == "timeout":
+        try:
+            m.timeout = int(command[1])
+            print(f'Set worker timeout to {m.timeout}')
+        except IndexError:
+            print(f'Current worker timeout is {m.timeout}')
     elif command[0] == "exit":
         sys.exit(0)
     else:
@@ -292,12 +301,13 @@ if __name__ == "__main__":
                 m.send_work(s)
             m.complete = False
         else:
-            # Check for timeouts every 5 seconds
+            # Check for timeouts about every 5 seconds
             curr = time.time()
             if curr - prev < 5:
                 continue
             prev = curr
             for fn in list(m.workers):
-                if curr - m.workers[fn]['lastheardfrom'] > 30:
+                if curr - m.workers[fn]['lastheardfrom'] > m.timeout:
                     m.cleanup(m.workers[fn]['conn'])
+            print("> ", end="", flush=True)
 
