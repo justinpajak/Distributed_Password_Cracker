@@ -310,5 +310,3 @@ if __name__ == "__main__":
             for fn in list(m.workers):
                 if curr - m.workers[fn]['lastheardfrom'] > m.timeout:
                     m.cleanup(m.workers[fn]['conn'])
-            print("> ", end="", flush=True)
-
