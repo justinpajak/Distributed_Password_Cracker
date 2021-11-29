@@ -63,10 +63,6 @@ class Worker:
 			#print('Waiting for batch...\n')
 			# Read length of message from manager
 			message_len = self.manager_sock.recv(8)
-			if not message_len:
-				self.manager_sock.close()
-				print("Server disconnected.")
-				sys.exit(1)
 			message_len = int.from_bytes(message_len, "little")
 
 			# Read message from manager
@@ -81,7 +77,7 @@ class Worker:
 		
 			# Determine if batch is valid and get cracked dict, start, and end range values
 			message_json = {}
-			cracked = ""
+			crack = ""
 			start = 0
 			end = 0
 			try:
@@ -90,7 +86,7 @@ class Worker:
 				start = message_json["start"]
 				end = message_json["end"]
 			except:
-				print("Invalid batch message received from manager.")
+				print("Invalid batch message received from manager or server disconnected")
 				self.manager_sock.close()
 				sys.exit(1)
 
