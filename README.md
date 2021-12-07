@@ -30,5 +30,3 @@ Type "prog" in the Manager CLI to see the progess bar for the current workload
 <br/>
 Type "system" in the Manager CLI to see a list of connected worker nodes and the last time the Manager heard from them.
 <br/>
-<h3> Warning </h3>
-Upon killing the Manager process, a new Manager can not be created until the dps-manager entry in the catalog.cse.nd.edu:9097 name server has been removed.  This entry is removed around 15 minutes after the Manager process ends. This is because upon creating a new Manager instance, there will be two name server entries in catalog.cse.nd.edu:9097/query.json and the Worker nodes will not know which one is correct.  
