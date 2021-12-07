@@ -30,11 +30,13 @@ class Worker:
 		# Find entry corresponding to manager project name
 		self.host = None
 		self.port = None
+		lastheardfrom = 0
 		for entry in json_data:
 			try:
-				if entry["type"] == "manager" and entry["project"] == project_name:
+				if entry["type"] == "manager" and entry["project"] == project_name and entry["lastheardfrom"] > lastheardfrom:
 					self.host = entry["address"]
 					self.port = int(entry["port"])
+					lastheardfrom = int(entry["lastheardfrom"])
 			except:
 				pass
 
