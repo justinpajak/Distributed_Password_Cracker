@@ -166,7 +166,7 @@ class Manager:
         if self.cracked:
             print("Cracked:")
             for msg, cipher in self.cracked:
-                print("    ", msg, "-", cipher)
+                print(f'    {msg:>7} - {cipher}')
 
 def update_ns(name, port):
     while True:
